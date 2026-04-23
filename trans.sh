@@ -1391,10 +1391,35 @@ EOF
         fi
     done
 }
+fix_block_sector_limit() {
+   local disk="${1:-auto}"
+   local max_sectors="${2:-512}"
+   
+   # 自动检测主磁盘
+   if [ "$disk" = "auto" ]; then
+       [ -b "/dev/vda" ] && disk="vda" && return
+        [ -b "/dev/sda" ] && disk="sda" && return
+      [ -b "/dev/nvme0n1" ] && disk="nvme0n1" && return
+       warn "Cannot detect main disk, skip sector limit fix"
+       return 0
+   fi
+    
+   local sector_file="/sys/block/$disk/queue/max_sectors_kb"
+   if [ -f "$sector_file" ]; then
+       local current_val
+       current_val=$(cat "$sector_file" 2>/dev/null) || return 0
+        # 仅当值过大时修复，避免干扰正常配置
+       if [ -n "$current_val" ] && [ "$current_val" -gt 1024 ] 2>/dev/null; then
+           info "Fixing block sector limit: $sector_file $current_val -> $max_sectors"
+            echo "$max_sectors" > "$sector_file" 2>/dev/null || \
+                warn "Failed to write $sector_file (may need root)"
+       fi
+   fi
+}
 
 install_alpine() {
     info "install alpine"
-
+    fix_block_sector_limit "auto" 512
     need_ram=512
     swap_size=$(get_need_swap_size $need_ram)
     [ "$swap_size" -gt 0 ] && hack_lowram=true || hack_lowram=false
